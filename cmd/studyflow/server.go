@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -24,6 +25,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.home)
 	mux.HandleFunc("/api/tasks", s.tasks)
+	mux.HandleFunc("/api/tasks/", s.task)
 	mux.HandleFunc("/api/sessions", s.sessions)
 	mux.HandleFunc("/health", s.health)
 	return logging(mux)
@@ -75,6 +77,28 @@ func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) task(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, err := taskID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid task id"))
+		return
+	}
+	task, err := s.store.ToggleTask(id)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrTaskNotFound) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, task)
+}
+
 func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -82,6 +106,7 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
+		TaskID  int    `json:"task_id"`
 		Minutes int    `json:"minutes"`
 		Note    string `json:"note"`
 	}
@@ -89,7 +114,7 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	session, err := s.store.AddSession(input.Minutes, strings.TrimSpace(input.Note))
+	session, err := s.store.AddSession(input.TaskID, input.Minutes, strings.TrimSpace(input.Note))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

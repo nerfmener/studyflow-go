@@ -16,7 +16,10 @@
     .grid { display:grid; grid-template-columns:1.2fr .8fr; gap:18px; } h2 { margin-top:0; font-size:1.2rem; }
     form { display:flex; gap:8px; margin-bottom:18px; } input, button { border-radius:10px; border:1px solid #d8ddea; padding:11px 12px; font:inherit; }
     input { min-width:0; flex:1; } button { background:#5b5ce2; border-color:#5b5ce2; color:#fff; cursor:pointer; font-weight:700; } button:hover { background:#4546c7; }
-    li { list-style:none; display:flex; justify-content:space-between; gap:12px; padding:13px 0; border-bottom:1px solid #edf0f5; } ul { margin:0; padding:0; }
+    li { list-style:none; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 0; border-bottom:1px solid #edf0f5; } ul { margin:0; padding:0; }
+    .task-main { display:flex; align-items:center; gap:10px; min-width:0; } .task-main span { overflow-wrap:anywhere; }
+    .done { color:#98a2b3; text-decoration:line-through; } .check { width:20px; height:20px; padding:0; border-radius:6px; background:#fff; border:2px solid #c4c9d7; color:#5b5ce2; flex:0 0 auto; }
+    .check.checked { background:#5b5ce2; border-color:#5b5ce2; color:#fff; }
     .tag { background:#eef0ff; color:#4b4cc4; border-radius:99px; padding:4px 8px; font-size:.75rem; white-space:nowrap; }
     .empty { color:#98a2b3; padding:10px 0; } .session { display:flex; align-items:center; gap:12px; margin:10px 0; } .session strong { color:#5b5ce2; }
     @media(max-width:720px) { header { align-items:flex-start; flex-direction:column; } .stats, .grid { grid-template-columns:1fr; } }
@@ -31,14 +34,15 @@
     <div class="card"><div class="muted">Текущий streak</div><div class="stat-value">{{.Streak}} <small>дн.</small></div></div>
   </section>
   <section class="grid">
-    <div class="card"><h2>Добавить учебную задачу</h2><form id="task-form"><input id="task-title" placeholder="Например: разобраться с горутинами" required><input id="task-category" placeholder="Go" style="max-width:100px"><button>Добавить</button></form><ul id="tasks">{{range .Tasks}}<li><span>{{.Title}}</span><span class="tag">{{if .Category}}{{.Category}}{{else}}Общее{{end}}</span></li>{{else}}<li class="empty">Пока задач нет. Добавь первую.</li>{{end}}</ul></div>
-    <div class="card"><h2>Записать занятие</h2><form id="session-form"><input id="minutes" type="number" min="1" max="720" placeholder="Минуты" required><button>Сохранить</button></form><p class="muted">Отметь время, которое сегодня действительно потратил на обучение.</p><div id="message"></div><h2 style="margin-top:28px">Последние занятия</h2>{{range .Sessions}}<div class="session"><strong>{{.Minutes}} мин</strong><span class="muted">{{.Note}}</span></div>{{else}}<div class="empty">История появится после первого занятия.</div>{{end}}</div>
+    <div class="card"><h2>Добавить учебную задачу</h2><form id="task-form"><input id="task-title" placeholder="Например: разобраться с горутинами" required><input id="task-category" placeholder="Go" style="max-width:100px"><button>Добавить</button></form><ul id="tasks">{{range .Tasks}}<li><div class="task-main"><button class="check {{if .Completed}}checked{{end}}" data-task-id="{{.ID}}" title="Отметить выполнение">{{if .Completed}}✓{{end}}</button><span class="{{if .Completed}}done{{end}}">{{.Title}}</span></div><span class="tag">{{if .Category}}{{.Category}}{{else}}Общее{{end}}</span></li>{{else}}<li class="empty">Пока задач нет. Добавь первую.</li>{{end}}</ul></div>
+    <div class="card"><h2>Записать занятие</h2><form id="session-form"><select id="session-task" required><option value="">Выбери задачу</option>{{range .Tasks}}{{if not .Completed}}<option value="{{.ID}}">{{.Title}}</option>{{end}}{{end}}</select><input id="minutes" type="number" min="1" max="720" placeholder="Минуты" required><button>Сохранить</button></form><p class="muted">Укажи конкретную задачу — так история покажет, что именно ты изучал.</p><h2 style="margin-top:28px">Последние занятия</h2>{{range .Sessions}}<div class="session"><strong>{{.Minutes}} мин</strong><span><b>{{.TaskTitle}}</b><br><span class="muted">{{if .Note}}{{.Note}}{{else}}Без заметки{{end}}</span></span></div>{{else}}<div class="empty">История появится после первого занятия.</div>{{end}}</div>
   </section>
 </main>
 <script>
 async function send(url, body) { const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); if (!response.ok) { const data = await response.json(); throw new Error(data.error); } location.reload(); }
 document.querySelector('#task-form').addEventListener('submit', async (event) => { event.preventDefault(); try { await send('/api/tasks', {title: document.querySelector('#task-title').value, category: document.querySelector('#task-category').value}); } catch (error) { alert(error.message); }});
-document.querySelector('#session-form').addEventListener('submit', async (event) => { event.preventDefault(); try { await send('/api/sessions', {minutes: Number(document.querySelector('#minutes').value)}); } catch (error) { alert(error.message); }});
+document.querySelector('#session-form').addEventListener('submit', async (event) => { event.preventDefault(); try { await send('/api/sessions', {task_id: Number(document.querySelector('#session-task').value), minutes: Number(document.querySelector('#minutes').value)}); } catch (error) { alert(error.message); }});
+document.querySelectorAll('.check').forEach((button) => button.addEventListener('click', async () => { try { await fetch('/api/tasks/' + button.dataset.taskId, {method:'PATCH'}); location.reload(); } catch (error) { alert('Не удалось обновить задачу'); }}));
 </script>
 </body>
 </html>

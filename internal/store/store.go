@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrEmptyTitle  = errors.New("task title cannot be empty")
-	ErrInvalidMins = errors.New("study time must be between 1 and 720 minutes")
+	ErrEmptyTitle   = errors.New("task title cannot be empty")
+	ErrInvalidMins  = errors.New("study time must be between 1 and 720 minutes")
+	ErrTaskNotFound = errors.New("task not found")
 )
 
 type Task struct {
@@ -26,6 +27,8 @@ type Task struct {
 
 type Session struct {
 	ID        int       `json:"id"`
+	TaskID    int       `json:"task_id"`
+	TaskTitle string    `json:"task_title"`
 	Minutes   int       `json:"minutes"`
 	Note      string    `json:"note"`
 	StudiedAt time.Time `json:"studied_at"`
@@ -82,13 +85,35 @@ func (s *Store) AddTask(title, category string) (Task, error) {
 	return task, s.save()
 }
 
-func (s *Store) AddSession(minutes int, note string) (Session, error) {
+func (s *Store) ToggleTask(id int) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index := range s.data.Tasks {
+		if s.data.Tasks[index].ID == id {
+			s.data.Tasks[index].Completed = !s.data.Tasks[index].Completed
+			return s.data.Tasks[index], s.save()
+		}
+	}
+	return Task{}, ErrTaskNotFound
+}
+
+func (s *Store) AddSession(taskID, minutes int, note string) (Session, error) {
 	if minutes < 1 || minutes > 720 {
 		return Session{}, ErrInvalidMins
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	session := Session{ID: nextID(s.data.Sessions), Minutes: minutes, Note: note, StudiedAt: time.Now()}
+	var taskTitle string
+	for _, task := range s.data.Tasks {
+		if task.ID == taskID {
+			taskTitle = task.Title
+			break
+		}
+	}
+	if taskTitle == "" {
+		return Session{}, ErrTaskNotFound
+	}
+	session := Session{ID: nextID(s.data.Sessions), TaskID: taskID, TaskTitle: taskTitle, Minutes: minutes, Note: note, StudiedAt: time.Now()}
 	s.data.Sessions = append(s.data.Sessions, session)
 	return session, s.save()
 }
@@ -99,6 +124,18 @@ func (s *Store) Snapshot() (Snapshot, error) {
 	snapshot := Snapshot{
 		Tasks:    append([]Task(nil), s.data.Tasks...),
 		Sessions: append([]Session(nil), s.data.Sessions...),
+	}
+	taskTitles := make(map[int]string, len(snapshot.Tasks))
+	for _, task := range snapshot.Tasks {
+		taskTitles[task.ID] = task.Title
+	}
+	for index := range snapshot.Sessions {
+		if title := taskTitles[snapshot.Sessions[index].TaskID]; title != "" {
+			snapshot.Sessions[index].TaskTitle = title
+		}
+		if snapshot.Sessions[index].TaskTitle == "" {
+			snapshot.Sessions[index].TaskTitle = "Без названия"
+		}
 	}
 	for _, task := range snapshot.Tasks {
 		if task.Completed {
